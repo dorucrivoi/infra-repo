@@ -1,0 +1,111 @@
+version: "3.9"
+
+services:
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  discovery-server:
+    build:
+      context: /Users/doru.crivoi/Documents/didacticSystem/discovery-server
+      dockerfile: Dockerfile
+    container_name: discovery-server
+    ports:
+      - "8761:8761"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8761/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  api-gateway:
+    build:
+      context: /Users/doru.crivoi/Documents/didacticSystem/api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  didactic-config-server:
+    build:
+      context: /Users/doru.crivoi/Documents/didacticSystem/didactic-config-server
+      dockerfile: Dockerfile
+    container_name: didactic-config-server
+    ports:
+      - "8888:8888"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      api-gateway:
+        condition: service_started
+    restart: unless-stopped
+
+  didactic-personal:
+    build:
+      context: /Users/doru.crivoi/Documents/didacticSystem/Didactic-Personal
+      dockerfile: Dockerfile
+    container_name: didactic-personal
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker,rabbitmq
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      didactic-config-server:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+      api-gateway:
+        condition: service_started
+    restart: unless-stopped
+
+  catalogue:
+    build:
+      context: /Users/doru.crivoi/Documents/didacticSystem/catalogue
+      dockerfile: Dockerfile
+    container_name: catalogue
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker,rabbitmq
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      didactic-config-server:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+      api-gateway:
+        condition: service_started
+    restart: unless-stopped
