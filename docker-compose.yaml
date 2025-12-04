@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
 
   rabbitmq:
@@ -8,9 +6,11 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+      - "15692:15692"
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbitmq_prometheus"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
       interval: 10s
@@ -80,12 +80,12 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: docker,rabbitmq
     depends_on:
+      rabbitmq:
+        condition: service_healthy
       discovery-server:
         condition: service_healthy
       didactic-config-server:
         condition: service_started
-      rabbitmq:
-        condition: service_healthy
       api-gateway:
         condition: service_started
     restart: unless-stopped
@@ -109,3 +109,43 @@ services:
       api-gateway:
         condition: service_started
     restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - /Users/doru.crivoi/Documents/didacticSystem/monitoring/prometheus.yaml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus  # Adaugă și volum pentru date persistente
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=200h'
+    depends_on:
+      - rabbitmq
+    restart: unless-stopped
+
+  grafana:
+      image: grafana/grafana:latest
+      container_name: grafana
+      ports:
+        - "3000:3000"
+      environment:
+        - GF_SECURITY_ADMIN_PASSWORD=admin
+        - GF_USERS_ALLOW_SIGN_UP=false
+      depends_on:
+        - prometheus
+      volumes:
+        - grafana_data:/var/lib/grafana  # Folosește grafana_data, nu grafana-storage
+        # Opțional: pentru provisioning automat
+        - /Users/doru.crivoi/Documents/didacticSystem/monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+        - /Users/doru.crivoi/Documents/didacticSystem/monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+      restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+
+
